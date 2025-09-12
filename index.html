@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generator Gambar Gemini</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4 sm:p-6">
+
+    <div class="bg-white rounded-3xl shadow-xl p-6 sm:p-10 w-full max-w-2xl">
+        <h1 class="text-3xl sm:text-4xl font-extrabold text-center text-gray-800 mb-2">
+            Generator Gambar Gemini
+        </h1>
+        <p class="text-center text-gray-500 mb-8 sm:mb-10">
+            Masukan deskripsi gambar yang Anda inginkan dan klik "Buat Gambar".
+        </p>
+
+        <div class="space-y-6">
+            <div class="relative">
+                <input
+                    id="promptInput"
+                    type="text"
+                    placeholder="Contoh: Seekor kucing lucu yang mengenakan topi kecil"
+                    class="w-full px-5 py-4 text-lg border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200"
+                />
+            </div>
+
+            <button
+                id="generateBtn"
+                class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:bg-indigo-400"
+            >
+                Buat Gambar
+            </button>
+        </div>
+
+        <div id="imageContainer" class="mt-8 sm:mt-10 flex justify-center items-center bg-gray-200 rounded-2xl overflow-hidden min-h-[300px] text-gray-500 text-center">
+            <span id="placeholderText">Gambar yang dihasilkan akan muncul di sini.</span>
+            <div id="loadingIndicator" class="hidden animate-spin rounded-full h-12 w-12 border-4 border-t-4 border-indigo-500 border-t-transparent"></div>
+            <img id="generatedImage" src="" alt="Gambar yang dihasilkan oleh AI" class="hidden w-full h-full object-contain">
+        </div>
+        
+        <!-- Error/Message Box -->
+        <div id="messageBox" class="hidden mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl relative" role="alert">
+            <span class="block sm:inline" id="messageText"></span>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const promptInput = document.getElementById('promptInput');
+            const generateBtn = document.getElementById('generateBtn');
+            const imageContainer = document.getElementById('imageContainer');
+            const placeholderText = document.getElementById('placeholderText');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const generatedImage = document.getElementById('generatedImage');
+            const messageBox = document.getElementById('messageBox');
+            const messageText = document.getElementById('messageText');
+
+            // API endpoint untuk model imagen-3.0-generate-002
+            const apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=';
+            
+            // Variabel kosong untuk API key. Ini akan diisi secara otomatis oleh lingkungan Canvas.
+            const apiKey = '';
+
+            // Utility function to show messages
+            function showMessage(text, isError = false) {
+                messageText.textContent = text;
+                messageBox.classList.remove('hidden', 'bg-red-100', 'bg-green-100', 'border-red-400', 'border-green-400', 'text-red-700', 'text-green-700');
+                if (isError) {
+                    messageBox.classList.add('bg-red-100', 'border-red-400', 'text-red-700');
+                } else {
+                    messageBox.classList.add('bg-green-100', 'border-green-400', 'text-green-700');
+                }
+            }
+
+            // Function to generate the image
+            async function generateImage() {
+                const prompt = promptInput.value.trim();
+                if (!prompt) {
+                    showMessage("Mohon masukkan deskripsi gambar.", true);
+                    return;
+                }
+
+                // Sembunyikan pesan, gambar, dan teks placeholder. Tampilkan indikator loading.
+                messageBox.classList.add('hidden');
+                generatedImage.classList.add('hidden');
+                placeholderText.classList.add('hidden');
+                loadingIndicator.classList.remove('hidden');
+                generateBtn.disabled = true;
+                generateBtn.textContent = 'Membuat...';
+
+                const payload = {
+                    instances: { prompt: prompt },
+                    parameters: { "sampleCount": 1 }
+                };
+
+                let retries = 0;
+                const maxRetries = 5;
+                const baseDelay = 1000;
+
+                while (retries < maxRetries) {
+                    try {
+                        const response = await fetch(apiUrl + apiKey, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        if (!response.ok) {
+                            if (response.status === 429) { // Too Many Requests
+                                const delay = baseDelay * Math.pow(2, retries);
+                                console.warn(`API call failed with status ${response.status}. Retrying in ${delay}ms...`);
+                                await new Promise(resolve => setTimeout(resolve, delay));
+                                retries++;
+                                continue;
+                            }
+                            throw new Error(`API error: ${response.status} - ${response.statusText}`);
+                        }
+
+                        const result = await response.json();
+                        const base64Data = result?.predictions?.[0]?.bytesBase64Encoded;
+
+                        if (base64Data) {
+                            const imageUrl = `data:image/png;base64,${base64Data}`;
+                            generatedImage.src = imageUrl;
+                            generatedImage.classList.remove('hidden');
+                            imageContainer.classList.remove('bg-gray-200');
+                            imageContainer.classList.add('bg-gray-50');
+                        } else {
+                            throw new Error('Tidak ada data gambar yang diterima dari API.');
+                        }
+                        
+                        break; // Exit the loop on success
+
+                    } catch (error) {
+                        if (retries === maxRetries - 1) {
+                            showMessage(`Gagal membuat gambar: ${error.message}`, true);
+                        }
+                        retries++;
+                    }
+                }
+
+                // Sembunyikan indikator loading dan kembalikan tombol
+                loadingIndicator.classList.add('hidden');
+                generateBtn.disabled = false;
+                generateBtn.textContent = 'Buat Gambar';
+            }
+
+            // Event listener untuk tombol "Buat Gambar"
+            generateBtn.addEventListener('click', generateImage);
+
+            // Event listener untuk tombol 'Enter' pada input
+            promptInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    generateImage();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
